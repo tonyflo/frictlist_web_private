@@ -249,7 +249,67 @@ function add_frict($uid, $firstname, $lastname, $gender, $base, $from, $to, $not
 }
 
 /*
- * @brief Allows a user to add a frict to their list
+ * @brief Allows a user to add a mate
+ * @param uid the user id of the user
+ * @param firstname the first name of the user up to 255 characters
+ * @param lastname the first name of the user up to 255 characters
+ * @param gender the gender of account: 0 if male, 1 is female
+ * @param db the database object
+ * @param table_user the table name of the user table
+ * @param table_mate the table name of the mate table
+ * @retval -60 if uid was null or invalid
+ * @retval -61 if uid wasn't found
+ * @retval -62 if insert into mate table was not successful
+ * @retval the id of the mate if success
+ */
+function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table_mate)
+{
+   if($uid == null || $uid < 0)
+   {
+      return -60;
+   }
+
+   //check that the uid exists in the db
+   $query="select * from ".$table_user." where uid=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('s', $uid);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->num_rows;
+   $sql->free_result();
+ 
+   //the uid was found and is unique so we can proceed with the insert
+   if($numrows == 1)
+   {
+      //insert into hookup table
+      $query2="insert into ".$table_mate."(hu_first_name, hu_last_name, hu_gender) values(?, ?, ?)";
+      $sql2=$db->prepare($query2);
+      $sql2->bind_param('ssi', $firstname, $lastname, $gender);
+      $sql2->execute();
+      //get id generated from the auto increment by the previous query
+      $mate_id = $sql2->insert_id;
+      $sql2->free_result();
+
+      //check result is TRUE meaning the insert was successful
+      if($sql2 == TRUE && $mate_id > 0)
+      {
+         return $mate_id;
+      }
+      else
+      {
+         //something went wrong when adding to the mate table
+         return -62;
+      }
+   }
+   else
+   {
+      //the uid was not found so return
+      return -61;
+   }
+}
+
+/*
+ * @brief Allows a user to update a frict in their list
  * @param uid the user id of the user adding the frict
  * @param frict_id the id of the frict
  * @param firstname the first name of the user up to 255 characters
@@ -303,7 +363,7 @@ function update_frict($uid, $frict_id, $firstname, $lastname, $gender, $base, $f
       return -31;
    }
    
-   //the uid was found and is unique so we can proceed with the insert
+   //the frict_id was found and is unique so we can proceed with the insert
    if($numrows_frict != 1)
    {
       //the frict_id was not found so return
@@ -361,6 +421,81 @@ function update_frict($uid, $frict_id, $firstname, $lastname, $gender, $base, $f
    }
    
    return $frict_id;
+}
+
+/*
+ * @brief Allows a user to update a mate
+ * @param uid the user id of the user 
+  * @param mid the mate id of the mate
+ * @param firstname the first name of the user up to 255 characters
+ * @param lastname the first name of the user up to 255 characters
+ * @param gender the gender of account: 0 if male, 1 is female
+ * @param db the database object
+ * @param table_user the table name of the user table
+ * @param table_mate the table name of the mate table
+ * @retval -60 if uid was null or invalid
+ * @retval -61 if uid wasn't found
+ * @retval -62 if insert into mate table was not successful
+ * @retval the id of the mate if success
+ */
+function update_mate($uid, $mid, $firstname, $lastname, $gender, $db, $table_user, $table_hu)
+{
+   if($uid == null || $uid < 0 || $mid == null || $mid < 0)
+   {
+      return -70;
+   }
+
+   //check that the uid exists in the db
+   $query="select * from ".$table_user." where uid=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('s', $uid);
+   $sql->execute();
+   $sql->store_result();
+   $numrows_user=$sql->num_rows;
+   $sql->free_result();
+   
+   //check that the hu_id (mid) exists in the db
+   $query2="select * from ".$table_hu." where hu_id=?";
+   $sql2=$db->prepare($query2);
+   $sql2->bind_param('s', $mid);
+   $sql2->execute();
+   $sql2->store_result();
+   $numrows_mate=$sql2->num_rows;
+   $sql2->free_result();
+
+   //the uid was found and is unique so we can proceed with the insert
+   if($numrows_user != 1)
+   {
+      //the uid was not found so return
+      return -71;
+   }
+   
+   //the mid was found and is unique so we can proceed with the insert
+   if($numrows_mate != 1)
+   {
+      //the mid was not found so return
+      return -72;
+   }
+
+   $datetime = date("Y-m-d H:i:s");
+   
+   //update hookup table
+   $query4="update ".$table_hu." set hu_first_name=?, hu_last_name=?, hu_gender=?, last_update=? where hu_id='".$mid."'";
+   $sql4=$db->prepare($query4);
+   $sql4->bind_param('ssis', $firstname, $lastname, $gender, $datetime);
+   $sql4->execute();
+   $sql4->store_result();
+   $numrows4=$sql4->affected_rows;
+   $sql4->free_result();
+   
+   //check result is TRUE meaning the update was successful
+   if($numrows4 != 1)
+   {
+      //something went wrong when updating hookup table
+      return -73;
+   } 
+   
+   return $mid;
 }
 
 /*
