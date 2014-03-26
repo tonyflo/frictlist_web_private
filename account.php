@@ -5,6 +5,42 @@
  * @brief Functions that allow a user to interact with their data
  */
  
+ $SUCCESS = 0;
+ 
+/*
+ * @brief Validates an id by checking if it exists in the table and is unique
+ * @param table The name of the table to query
+ * @param id_str The string representation of the column name
+ * @param id The id to check if it exists and is unique
+ * @retval -100 if the id passed in was null or not positive
+ * @retval -101 if the provided id doesn't exist or is not unique
+ * @retval SUCCESS if not failure
+ *
+ */
+function validateId($table, $id_str, $id, $db)
+{
+   if($id == null || $id < 0)
+   {
+      return -100;
+   }
+
+   //check that the uid exists in the db
+   $query="select * from ".$table." where ".$id_str."=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $id);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->num_rows;
+   $sql->free_result();
+   
+   if($numrows != 1)
+   {
+      return -101;
+   }
+   
+   return $SUCCESS;
+}
+ 
 /*
  * @brief Allows a user to sign into their account
  * @param email a valid email address up to 35 characters
@@ -51,6 +87,7 @@ function sign_in($email, $password, $db, $table)
    }
 } //end sign_in()
 
+//TODO
 /*
  * @brief Send all (not deleted) frict data to user
  * @param uid the user id of the user adding the frict
@@ -167,85 +204,43 @@ function pw_hash($password)
 
 /*
  * @brief Allows a user to add a frict to their list
- * @param uid the user id of the user adding the frict
- * @param firstname the first name of the user up to 255 characters
- * @param lastname the first name of the user up to 255 characters
- * @param gender the gender of account: 0 if male, 1 is female
+ * @param mate_id the mate
  * @parma base the base of the frict
  * @param from the first occurrence of the frict
- * @param from the last occurrence of the frict
+ * @param to the last occurrence of the frict
  * @param notes notes about the frict
  * @param db the database object
- * @param table_hu the table name of the hookup table
+ * @param table_user the table name of the user table
+ * @param table_mate the table name of the hookup table
  * @param table_frict the table name of the frict table
- * @retval -20 if an null or invalid uid
- * @retval -21 if uid isn't found
- * @retval -22 if the insert into the hookup table was not successful
- * @retval -23 if the insert into the frict table was not successful
- * @retval frict_id if the frict and hookup tables were updated successfully
+ * @retval -80 insert was unsuccessful
+ * @retval frict_id on success
  */
-function add_frict($uid, $firstname, $lastname, $gender, $base, $from, $to, $notes, $db, $table_user, $table_hu, $table_frict)
+function add_frict($mate_id, $base, $from, $to, $notes, $db, $table_user, $table_mate, $table_frict)
 {
-   if($uid == null || $uid < 0)
+   //validate ids
+   $rc = validateId($table_mate, "mate_id", $mate_id, $db);
+   if($rc != $SUCCESS)
    {
-      return -20;
+      return $rc;
    }
-
-   //check that the uid exists in the db
-   $query="select * from ".$table_user." where uid=?";
+   
+   //insert into frict table
+   $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_to_date, frict_base, notes, creation_datetime) values(?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
    $sql=$db->prepare($query);
-   $sql->bind_param('s', $uid);
+   $sql->bind_param('issis', $mate_id, $from, $to, $base, $notes);
    $sql->execute();
-   $sql->store_result();
-   $numrows=$sql->num_rows;
+   //get id generated from the auto increment by the previous query
+   $frict_id = $sql->insert_id;
    $sql->free_result();
- 
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows == 1)
+   
+   //check that the insert was successful
+   if($sql != TRUE || $frict_id <= 0)
    {
-      //insert into hookup table
-      $query2="insert into ".$table_hu."(hu_first_name, hu_last_name, hu_gender) values(?, ?, ?)";
-      $sql2=$db->prepare($query2);
-      $sql2->bind_param('ssi', $firstname, $lastname, $gender);
-      $sql2->execute();
-      //get id generated from the auto increment by the previous query
-      $hu_id = $sql2->insert_id;
-      $sql2->free_result();
-
-      //check result is TRUE meaning the insert was successful
-      if($sql2 == TRUE && $hu_id > 0)
-      {
-         //insert into frict table
-         $query3="insert into ".$table_frict."(uid, hu_id, frict_from_date, frict_to_date, frict_base, notes, creation_datetime) values(?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
-         $sql3=$db->prepare($query3);
-         $sql3->bind_param('iissis', $uid, $hu_id, $from, $to, $base, $notes);
-         $sql3->execute();
-         //get id generated from the auto increment by the previous query
-         $frict_id = $sql3->insert_id;
-         $sql3->free_result();
-         
-         //check result is TRUE meaning the insert was successful
-         if($sql3 == TRUE && $frict_id > 0)
-         {
-            return $frict_id;
-         }
-         else
-         {
-             //something went wrong when adding to the frict table
-            return -23;     
-         }
-      }
-      else
-      {
-         //something went wrong when adding to the hookup table
-         return -22;
-      }
+      return -80;
    }
-   else
-   {
-      //the uid was not found so return
-      return -21;
-   }
+   
+   return $frict_id;
 }
 
 /*
@@ -257,168 +252,81 @@ function add_frict($uid, $firstname, $lastname, $gender, $base, $from, $to, $not
  * @param db the database object
  * @param table_user the table name of the user table
  * @param table_mate the table name of the mate table
- * @retval -60 if uid was null or invalid
- * @retval -61 if uid wasn't found
- * @retval -62 if insert into mate table was not successful
- * @retval the id of the mate if success
+ * @retval -60 if the insert was unsuccessful
+ * @retval the mate_id of the mate if success
  */
 function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table_mate)
 {
-   if($uid == null || $uid < 0)
+   //validate ids
+   $rc = validateId($table_user, "uid", $uid, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+ 
+   //insert into mate table
+   $query="insert into ".$table_mate."(mate_first_name, mate_last_name, mate_gender) values(?, ?, ?)";
+   $sql=$db->prepare($query);
+   $sql->bind_param('ssi', $firstname, $lastname, $gender);
+   $sql->execute();
+   //get id generated from the auto increment by the previous query
+   $mate_id = $sql->insert_id;
+   $sql->free_result();
+
+   //check that the insert was successful
+   if($sql != TRUE || $mate_id <= 0)
    {
       return -60;
    }
 
-   //check that the uid exists in the db
-   $query="select * from ".$table_user." where uid=?";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $uid);
-   $sql->execute();
-   $sql->store_result();
-   $numrows=$sql->num_rows;
-   $sql->free_result();
- 
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows == 1)
-   {
-      //insert into hookup table
-      $query2="insert into ".$table_mate."(hu_first_name, hu_last_name, hu_gender) values(?, ?, ?)";
-      $sql2=$db->prepare($query2);
-      $sql2->bind_param('ssi', $firstname, $lastname, $gender);
-      $sql2->execute();
-      //get id generated from the auto increment by the previous query
-      $mate_id = $sql2->insert_id;
-      $sql2->free_result();
-
-      //check result is TRUE meaning the insert was successful
-      if($sql2 == TRUE && $mate_id > 0)
-      {
-         return $mate_id;
-      }
-      else
-      {
-         //something went wrong when adding to the mate table
-         return -62;
-      }
-   }
-   else
-   {
-      //the uid was not found so return
-      return -61;
-   }
+   return $mate_id;
 }
 
 /*
  * @brief Allows a user to update a frict in their list
- * @param uid the user id of the user adding the frict
  * @param frict_id the id of the frict
- * @param firstname the first name of the user up to 255 characters
- * @param lastname the first name of the user up to 255 characters
- * @param gender the gender of account: 0 if male, 1 is female
+ * @param mate_id the id of the mate
  * @parma base the base of the frict
  * @param from the first occurrence of the frict
- * @param from the last occurrence of the frict
+ * @param to the last occurrence of the frict
  * @param notes notes about the frict
  * @param db the database object
- * @param table_user the table name of the user table
- * @param table_hu the table name of the hookup table
+ * @param table_mate the table name of the hookup table
  * @param table_frict the table name of the frict table
- * @retval -30 if the uid or frict_id is null or invalid
- * @retval -31 if the uid wasn't found
- * @retval -32 if the frict_id wasn't found
- * @retval -33 if the hu_id wasn't found
- * @retval -34 if the update of the hookup table was not successful
- * @retval -35 if the update of the frict table was not successful
+ * @retval -90 if the update was unsuccessful
  * @retval frict_id if the update of the hookup and frict table was successful
  */
-function update_frict($uid, $frict_id, $firstname, $lastname, $gender, $base, $from, $to, $notes, $db, $table_user, $table_hu, $table_frict)
+function update_frict($frict_id, $mate_id, $base, $from, $to, $notes, $db, $table_mate, $table_frict)
 {
-   if($uid == null || $uid < 0 || $frict_id == null || $frict_id < 0)
+   //validate ids
+   $rc = validateId($table_frict, "frict_id", $frict_id, $db);
+   if($rc != $SUCCESS)
    {
-      return -30;
+      return $rc;
    }
-
-   //check that the uid exists in the db
-   $query="select * from ".$table_user." where uid=?";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $uid);
-   $sql->execute();
-   $sql->store_result();
-   $numrows_user=$sql->num_rows;
-   $sql->free_result();
-   
-   //check that the frict_id exists in the db
-   $query2="select * from ".$table_frict." where frict_id=?";
-   $sql2=$db->prepare($query2);
-   $sql2->bind_param('s', $frict_id);
-   $sql2->execute();
-   $sql2->store_result();
-   $numrows_frict=$sql2->num_rows;
-   $sql2->free_result();
-
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows_user != 1)
+   $rc = validateId($table_mate, "mate_id", $mate_id, $db);
+   if($rc != $SUCCESS)
    {
-      //the uid was not found so return
-      return -31;
-   }
-   
-   //the frict_id was found and is unique so we can proceed with the insert
-   if($numrows_frict != 1)
-   {
-      //the frict_id was not found so return
-      return -32;
-   }
-
-   //query for hu_id
-   $query3="select hu_id from ".$table_frict." where frict_id=?";
-   $sql3=$db->prepare($query3);
-   $sql3->bind_param('i', $frict_id);
-   $sql3->execute();
-   $sql3->bind_result($hu_id);
-   $sql3->fetch();
-   $sql3->free_result();
-   
-   //check if hu id is valid
-   if($hu_id <= 0)
-   {
-      //invalid hu_id
-      return -33;
+      return $rc;
    }
 
    $datetime = date("Y-m-d H:i:s");
    
    //update hookup table
-   $query4="update ".$table_hu." set hu_first_name=?, hu_last_name=?, hu_gender=?, last_update=? where hu_id='".$hu_id."'";
-   $sql4=$db->prepare($query4);
-   $sql4->bind_param('ssis', $firstname, $lastname, $gender, $datetime);
-   $sql4->execute();
-   $sql4->store_result();
-   $numrows4=$sql4->affected_rows;
-   $sql4->free_result();
+   $query="update ".$table_frict." set frict_from_date=?, frict_to_date=?, frict_base=?, notes=?, last_update=? where frict_id='".$frict_id."'";
+   $sql=$db->prepare($query);
+   $sql->bind_param('ssiss', $from, $to, $base, $notes, $datetime);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
    
-   //check result is TRUE meaning the update was successful
-   if($numrows4 != 1)
+   //check if update was successful
+   if($numrows != 1)
    {
       //something went wrong when updating hookup table
-      return -34;
+      return -90;
    } 
-
-   //update frict table
-   $query5="update ".$table_frict." set frict_from_date=?, frict_to_date=?, frict_base=?, notes=?, last_update=? where frict_id='".$frict_id."'";
-   $sql5=$db->prepare($query5);
-   $sql5->bind_param('ssiss', $from, $to, $base, $notes, $datetime);
-   $sql5->execute();
-   $sql5->store_result();
-   $numrows5=$sql5->affected_rows;
-   $sql5->free_result();
-   
-   //check result is TRUE meaning the update was successful
-   if($numrows5 != 1)
-   {
-      //something went wrong when updating frict table
-      return -35;
-   }
    
    return $frict_id;
 }
@@ -426,76 +334,49 @@ function update_frict($uid, $frict_id, $firstname, $lastname, $gender, $base, $f
 /*
  * @brief Allows a user to update a mate
  * @param uid the user id of the user 
-  * @param mid the mate id of the mate
+  * @param mate_id the mate id of the mate
  * @param firstname the first name of the user up to 255 characters
  * @param lastname the first name of the user up to 255 characters
  * @param gender the gender of account: 0 if male, 1 is female
  * @param db the database object
  * @param table_user the table name of the user table
  * @param table_mate the table name of the mate table
- * @retval -60 if uid was null or invalid
- * @retval -61 if uid wasn't found
- * @retval -62 if insert into mate table was not successful
+ * @retval -70 if the update was unsuccessful
  * @retval the id of the mate if success
  */
-function update_mate($uid, $mid, $firstname, $lastname, $gender, $db, $table_user, $table_hu)
+function update_mate($uid, $mate_id, $firstname, $lastname, $gender, $db, $table_user, $table_mate)
 {
-   if($uid == null || $uid < 0 || $mid == null || $mid < 0)
+   //validate ids
+   $rc = validateId($table_user, "uid", $uid, $db);
+   if($rc != $SUCCESS)
    {
-      return -70;
+      return $rc;
    }
-
-   //check that the uid exists in the db
-   $query="select * from ".$table_user." where uid=?";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $uid);
-   $sql->execute();
-   $sql->store_result();
-   $numrows_user=$sql->num_rows;
-   $sql->free_result();
-   
-   //check that the hu_id (mid) exists in the db
-   $query2="select * from ".$table_hu." where hu_id=?";
-   $sql2=$db->prepare($query2);
-   $sql2->bind_param('s', $mid);
-   $sql2->execute();
-   $sql2->store_result();
-   $numrows_mate=$sql2->num_rows;
-   $sql2->free_result();
-
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows_user != 1)
+   $rc = validateId($table_mate, "mate_id", $mate_id, $db);
+   if($rc != $SUCCESS)
    {
-      //the uid was not found so return
-      return -71;
-   }
-   
-   //the mid was found and is unique so we can proceed with the insert
-   if($numrows_mate != 1)
-   {
-      //the mid was not found so return
-      return -72;
+      return $rc;
    }
 
    $datetime = date("Y-m-d H:i:s");
    
    //update hookup table
-   $query4="update ".$table_hu." set hu_first_name=?, hu_last_name=?, hu_gender=?, last_update=? where hu_id='".$mid."'";
-   $sql4=$db->prepare($query4);
-   $sql4->bind_param('ssis', $firstname, $lastname, $gender, $datetime);
-   $sql4->execute();
-   $sql4->store_result();
-   $numrows4=$sql4->affected_rows;
-   $sql4->free_result();
+   $query="update ".$table_mate." set mate_first_name=?, mate_last_name=?, mate_gender=?, last_update=? where mate_id='".$mate_id."'";
+   $sql=$db->prepare($query);
+   $sql->bind_param('ssis', $firstname, $lastname, $gender, $datetime);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
    
-   //check result is TRUE meaning the update was successful
-   if($numrows4 != 1)
+   //check if update was successful
+   if($numrows != 1)
    {
       //something went wrong when updating hookup table
-      return -73;
+      return -70;
    } 
    
-   return $mid;
+   return $mate_id;
 }
 
 /*
