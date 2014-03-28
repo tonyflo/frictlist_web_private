@@ -87,7 +87,6 @@ function sign_in($email, $password, $db, $table)
    }
 } //end sign_in()
 
-//TODO
 /*
  * @brief Send all (not deleted) frict data to user
  * @param uid the user id of the user adding the frict
@@ -103,15 +102,15 @@ function get_frictlist($uid, $db)
    }
    
    //query database for provided email
-   $query="select frict.frict_id, frict.accepted, frict.frict_from_date, frict.frict_to_date, frict.frict_base, frict.notes, hookup.hu_first_name, hookup.hu_last_name, hookup.hu_gender from frict inner join hookup on frict.hu_id = hookup.hu_id where frict.uid=? AND frict.deleted=0;";
+   $query="SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_to_date, frict_base, notes FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 AND (frict.deleted IS NULL OR frict.deleted=0) ORDER BY mate_id ASC;";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
-   $sql->bind_result($frict_id, $accepted, $frict_from_date, $frict_to_date, $frict_base, $notes, $hu_first_name, $hu_last_name, $hu_gender);
+   $sql->bind_result($mate_id, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_to_date, $frict_base, $notes);
    echo "frictlist\n";
    while($sql->fetch())
    {
-      echo $frict_id."\t".$hu_first_name."\t".$hu_last_name."\t".$frict_base."\t".$accepted."\t".$frict_from_date."\t".$frict_to_date."\t".$notes."\t".$hu_gender."\n";
+      echo $mate_id."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\n";
    }
    $sql->free_result();
 }
@@ -265,9 +264,9 @@ function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table
    }
  
    //insert into mate table
-   $query="insert into ".$table_mate."(mate_first_name, mate_last_name, mate_gender) values(?, ?, ?)";
+   $query="insert into ".$table_mate."(uid, mate_first_name, mate_last_name, mate_gender) values(?, ?, ?, ?)";
    $sql=$db->prepare($query);
-   $sql->bind_param('ssi', $firstname, $lastname, $gender);
+   $sql->bind_param('issi', $uid, $firstname, $lastname, $gender);
    $sql->execute();
    //get id generated from the auto increment by the previous query
    $mate_id = $sql->insert_id;
