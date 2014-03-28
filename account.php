@@ -380,76 +380,88 @@ function update_mate($uid, $mate_id, $firstname, $lastname, $gender, $db, $table
 }
 
 /*
- * @brief Allows a user to remove a frict to their list
- * @param uid the user id of the user removing the frict
+ * @brief Allows a user to remove a frict from their list
  * @param frict_id the id of the frict
  * @param db the database object
- * @param table_user the table name of the user table
  * @param table_frict the table name of the frict table
- * @retval -40 if uid or frict_id was null or invalid
- * @retval -41 if the uid wasn't found
- * @retval -42 if the frict_id wasn't found
- * @retval -43 if the update of the frict table wasn't successful
- * @retval frict_id if the update of the frict table was successful
+ * @retval -50 if the deletion was unsuccessful
+ * @retval frict_id if the deletion was successful
  */
-function remove_frict($uid, $frict_id, $db, $table_user, $table_frict)
+function remove_frict($frict_id, $db, $table_frict)
 {
-   if($uid == null || $uid < 0 || $frict_id == null || $frict_id < 0)
+   //validate ids
+   $rc = validateId($table_frict, "frict_id", $frict_id, $db);
+   if($rc != $SUCCESS)
    {
-      return -40;
-   }
-
-   //check that the uid exists in the db
-   $query="select * from ".$table_user." where uid=?";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $uid);
-   $sql->execute();
-   $sql->store_result();
-   $numrows_user=$sql->num_rows;
-   $sql->free_result();
-   
-   //check that the frict_id exists in the db
-   $query2="select * from ".$table_frict." where frict_id=?";
-   $sql2=$db->prepare($query2);
-   $sql2->bind_param('s', $frict_id);
-   $sql2->execute();
-   $sql2->store_result();
-   $numrows_frict=$sql2->num_rows;
-   $sql2->free_result();
-
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows_user != 1)
-   {
-      //the uid was not found so return
-      return -41;
-   }
-   
-   //the uid was found and is unique so we can proceed with the insert
-   if($numrows_frict != 1)
-   {
-      //the frict_id was not found so return
-      return -42;
+      return $rc;
    }
 
    $datetime = date("Y-m-d H:i:s");
 
-   //update frict table
-   $query5="update ".$table_frict." set deleted=1, last_update=? where frict_id='".$frict_id."'";
-   $sql5=$db->prepare($query5);
-   $sql5->bind_param('s', $datetime);
-   $sql5->execute();
-   $sql5->store_result();
-   $numrows5=$sql5->affected_rows;
-   $sql5->free_result();
+   //"remove" frict by updating frict table and setting deleted to true
+   $query="update ".$table_frict." set deleted=1, last_update=? where frict_id='".$frict_id."'";
+   $sql=$db->prepare($query);
+   $sql->bind_param('s', $datetime);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
    
    //check result is TRUE meaning the update was successful
-   if($numrows5 != 1)
+   if($numrows != 1)
    {
       //something went wrong when updating frict table
-      return -43;
+      return -50;
    }
    
    return $frict_id;
+}
+
+/*
+ * @brief Allows a user to remove a mate from their list
+ * @param mate_id the id of the mate
+ * @param db the database object
+ * @param table_mate the table name of the mate table
+ * @param table_frict the table name of the frict table
+ * @retval -40 if the deletion was unsuccessful
+ * @retval mate_id if the deletion was successful
+ */
+function remove_mate($mate_id, $db, $table_mate, $table_frict)
+{
+   //validate ids
+   $rc = validateId($table_mate, "mate_id", $mate_id, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+
+   $datetime = date("Y-m-d H:i:s");
+   
+   //"remove" all fricts associated with the mate by updating frict table and setting deleted to true
+   $query="update ".$table_frict." set deleted=1, last_update=? where mate_id='".$mate_id."'";
+   $sql=$db->prepare($query);
+   $sql->bind_param('s', $datetime);
+   $sql->execute();
+   $sql->store_result();
+   $sql->free_result();
+
+   //"remove" mate by updating mate table and setting deleted to true
+   $query="update ".$table_mate." set deleted=1, last_update=? where mate_id='".$mate_id."'";
+   $sql=$db->prepare($query);
+   $sql->bind_param('s', $datetime);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
+   
+   //check result is TRUE meaning the update was successful
+   if($numrows != 1)
+   {
+      //something went wrong when updating mate table
+      return -40;
+   }
+
+   return $mate_id;
 }
  
 ?>
