@@ -27,7 +27,7 @@ function validateId($table, $id_str, $id, $db)
    //check that the uid exists in the db
    $query="select * from ".$table." where ".$id_str."=?";
    $sql=$db->prepare($query);
-   $sql->bind_param('i', $id);
+   $sql->bind_param('s', $id);
    $sql->execute();
    $sql->store_result();
    $numrows=$sql->num_rows;
@@ -40,23 +40,44 @@ function validateId($table, $id_str, $id, $db)
    
    return $SUCCESS;
 }
+
+/*
+ * @brief Get user metadata
+ * @param uid the user id of the user
+ * @param db the database object
+ * @retval on success, a table of the user's data in which columns are separated by tabs and rows by new lines
+ */
+function get_user_data($uid, $db)
+{
+   //query database for user data
+   $query="SELECT first_name, last_name, birthdate, gender from user where uid=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $uid);
+   $sql->execute();
+   $sql->bind_result($first, $last, $bday, $gender);
+   while($sql->fetch())
+   {
+      echo $first."\t".$last."\t".$bday."\t".$gender."\n";
+   }
+   $sql->free_result();
+}
  
 /*
  * @brief Allows a user to sign into their account
- * @param email a valid email address up to 35 characters
+ * @param username a username
  * @param password a password between 6 and 255 characters
  * @param db the database object
  * @param table the table name
  * @retval the primary key associated with a valid email and password
- * @retval -1 if the email address was not found in the database
+ * @retval -1 if the username was not found in the database
  * @retval -2 if the password is wrong
  */
-function sign_in($email, $password, $db, $table)
+function sign_in($username, $password, $db, $table)
 {
    //query database for provided email
-   $query="select uid, password from ".$table." where email=?";
+   $query="select uid, password from ".$table." where username=?";
    $sql=$db->prepare($query);
-   $sql->bind_param('s', $email);
+   $sql->bind_param('s', $username);
    $sql->execute();
    $sql->bind_result($uid, $hash);
    $sql->fetch();
@@ -82,34 +103,41 @@ function sign_in($email, $password, $db, $table)
    }
    else
    {
-      //return -1 because the email wasn't found
+      //return -1 because the username wasn't found
       return -1;
    }
 } //end sign_in()
 
 /*
  * @brief Send all (not deleted) frict data to user
- * @param uid the user id of the user adding the frict
+ * @param uid the user id of the user
  * @param db the database object
- * @retval -50 if invalid uid is discovered
- * @retval on success, a table of the uer's fricts in which columns are separated by tabs and rows by new lines
+ * @retval on success, a table of the user's fricts in which columns are separated by tabs and rows by new lines
  */
 function get_frictlist($uid, $db)
 {
-   if($uid == null || $uid < 0)
+   //validate ids
+   $rc = validateId("user", "uid", $uid, $db);
+   if($rc != $SUCCESS)
    {
-      return -50;
+      return $rc;
    }
    
-   //query database for provided email
-   $query="SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_to_date, frict_base, notes FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 AND (frict.deleted IS NULL OR frict.deleted=0) ORDER BY mate_id ASC;";
+   //echo frictlist flag
+   echo "frictlist\n";
+   
+   //echo user data array
+   get_user_data($uid, $db);
+   
+   //genderate frictlist table
+   $query="SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 AND (frict.deleted IS NULL OR frict.deleted=0) ORDER BY mate_id ASC;";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
    $sql->bind_result($mate_id, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_to_date, $frict_base, $notes);
-   echo "frictlist\n";
    while($sql->fetch())
    {
+      //echo frictlist row
       echo $mate_id."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\n";
    }
    $sql->free_result();
@@ -119,7 +147,8 @@ function get_frictlist($uid, $db)
  * @brief Allows a user to sign up for an account
  * @param firstname the first name of the user up to 255 characters
  * @param lastname the first name of the user up to 255 characters
- * @param email a valid email address up to 35 characters
+ * @param email a valid, unique email address 
+ * @param email a unique username
  * @param password a password between 6 and 255 characters
  * @param gender the gender of account: 0 if male, 1 is female
  * @param birthdate the birthdate of the user
@@ -127,53 +156,68 @@ function get_frictlist($uid, $db)
  * @param table the table name
  * @retval the primary key associated with the new account
  * @retval -4 if the email address is in use
+ * @retval -5 if the username is in use
  * @retval -7 if signing up fails
+ * @retval -10 if the username or email is null
  */
-function sign_up($firstname, $lastname, $email, $password, $gender, $birthdate, $db, $table)
+function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $db, $table)
 {
-   if($email == null)
+   if($email == null || $username == null)
    {
       return -10;
    }
    
    //check that the email doesn't exist in the db
-   $query="select * from ".$table." where email=?";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $email);
-   $sql->execute();
-   $sql->store_result();
-   $numrows=$sql->num_rows;
-   $sql->free_result();
+   $queryA="select * from ".$table." where email=?";
+   $sqlA=$db->prepare($queryA);
+   $sqlA->bind_param('s', $email);
+   $sqlA->execute();
+   $sqlA->store_result();
+   $numrowsA=$sqlA->num_rows;
+   $sqlA->free_result();
+   
+   //check that the username doesn't exist in the db
+   $queryB="select * from ".$table." where username=?";
+   $sqlB=$db->prepare($queryB);
+   $sqlB->bind_param('s', $username);
+   $sqlB->execute();
+   $sqlB->store_result();
+   $numrowsB=$sqlB->num_rows;
+   $sqlB->free_result();
  
    //the email address is available if the query returns 0 matching rows
-   if($numrows == 0)
-   {
-      //hash the password
-      $hash=pw_hash($password);
-
-      //the email address is available so proceed with creating account
-      $query2="insert into ".$table."(email, password, first_name, last_name, birthdate, gender, creation_datetime) values(?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
-      $sql2=$db->prepare($query2);
-      $sql2->bind_param('sssssi', $email, $hash, $firstname, $lastname, $birthdate, $gender);
-      $sql2->execute();
-      $sql2->free_result();
-      
-      //check result is TRUE meaning the insert was successful
-      if($sql2 == TRUE)
-      {
-         //sign in as normal to get the uid
-         return sign_in($email, $password, $db, $table);
-      }
-      else
-      {
-         //something went wrong when signing up
-         return -7;
-      }
-   }
-   else
+   if($numrowsA != 0)
    {
       //the email address is taken so return error code
       return -4;
+   }
+   
+   if($numrowsB != 0)
+   {
+      //the username is taken so return error code
+      return -5;
+   }
+   
+   //hash the password
+   $hash=pw_hash($password);
+
+   //the email address is available so proceed with creating account
+   $query2="insert into ".$table."(email, username, password, first_name, last_name, birthdate, gender, creation_datetime) values(?, ?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
+   $sql2=$db->prepare($query2);
+   $sql2->bind_param('ssssssi', $email, $username, $hash, $firstname, $lastname, $birthdate, $gender);
+   $sql2->execute();
+   $sql2->free_result();
+   
+   //check result is TRUE meaning the insert was successful
+   if($sql2 == TRUE)
+   {
+      //sign in as normal to get the uid
+      return sign_in($username, $password, $db, $table);
+   }
+   else
+   {
+      //something went wrong when signing up
+      return -7;
    }
 } //end sign_up()
 
@@ -206,7 +250,7 @@ function pw_hash($password)
  * @param mate_id the mate
  * @parma base the base of the frict
  * @param from the first occurrence of the frict
- * @param to the last occurrence of the frict
+ * @param rating the rating of the frict
  * @param notes notes about the frict
  * @param db the database object
  * @param table_user the table name of the user table
@@ -215,7 +259,7 @@ function pw_hash($password)
  * @retval -80 insert was unsuccessful
  * @retval frict_id on success
  */
-function add_frict($mate_id, $base, $from, $to, $notes, $db, $table_user, $table_mate, $table_frict)
+function add_frict($mate_id, $base, $from, $rating, $notes, $db, $table_user, $table_mate, $table_frict)
 {
    //validate ids
    $rc = validateId($table_mate, "mate_id", $mate_id, $db);
@@ -225,9 +269,9 @@ function add_frict($mate_id, $base, $from, $to, $notes, $db, $table_user, $table
    }
    
    //insert into frict table
-   $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_to_date, frict_base, notes, creation_datetime) values(?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
+   $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime) values(?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
    $sql=$db->prepare($query);
-   $sql->bind_param('issis', $mate_id, $from, $to, $base, $notes);
+   $sql->bind_param('isiis', $mate_id, $from, $rating, $base, $notes);
    $sql->execute();
    //get id generated from the auto increment by the previous query
    $frict_id = $sql->insert_id;
@@ -287,7 +331,7 @@ function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table
  * @param mate_id the id of the mate
  * @parma base the base of the frict
  * @param from the first occurrence of the frict
- * @param to the last occurrence of the frict
+ * @param rating the rating of the frict
  * @param notes notes about the frict
  * @param db the database object
  * @param table_mate the table name of the hookup table
@@ -295,7 +339,7 @@ function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table
  * @retval -90 if the update was unsuccessful
  * @retval frict_id if the update of the hookup and frict table was successful
  */
-function update_frict($frict_id, $mate_id, $base, $from, $to, $notes, $db, $table_mate, $table_frict)
+function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $db, $table_mate, $table_frict)
 {
    //validate ids
    $rc = validateId($table_frict, "frict_id", $frict_id, $db);
@@ -312,9 +356,9 @@ function update_frict($frict_id, $mate_id, $base, $from, $to, $notes, $db, $tabl
    $datetime = date("Y-m-d H:i:s");
    
    //update hookup table
-   $query="update ".$table_frict." set frict_from_date=?, frict_to_date=?, frict_base=?, notes=?, last_update=? where frict_id='".$frict_id."'";
+   $query="update ".$table_frict." set frict_from_date=?, frict_rating=?, frict_base=?, notes=?, last_update=? where frict_id='".$frict_id."'";
    $sql=$db->prepare($query);
-   $sql->bind_param('ssiss', $from, $to, $base, $notes, $datetime);
+   $sql->bind_param('siiss', $from, $rating, $base, $notes, $datetime);
    $sql->execute();
    $sql->store_result();
    $numrows=$sql->affected_rows;
@@ -461,6 +505,78 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
    }
 
    return $mate_id;
+}
+
+/*
+ * @brief Search for another user by name and gender
+ * @param firstname the first name of the user to search for
+ * @param lastname the last name of the user to search for
+ * @param gender the gender of the user to search for
+ * @param db the database object
+ * @retval if success, a table of uid, username, and birthdays of matching users
+ */
+function search_mate($firstname, $lastname, $gender, $db)
+{
+   //query database for user data
+   $query="SELECT uid, username, birthdate from user where first_name=? AND last_name=? AND gender=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('ssi', $firstname, $lastname, $gender);
+   $sql->execute();
+   $sql->bind_result($uid, $username, $bday);
+   echo "user_search\n";
+   while($sql->fetch())
+   {
+      echo $uid."\t".$username."\t".$bday."\n";
+   }
+   $sql->free_result();
+}
+
+/*
+ * @brief Send a request to another user
+ * @param uid user id of the user of the app
+ * @param users_mate_id mate_id from the personal matelist of the user of the app
+ * @param mates_uid user id to send the request to
+ * @param db the database object
+ * @retval -110 if the insert was unsuccessful
+ * @retval request_id if successful
+ */
+function send_mate_request($uid, $users_mate_id, $mates_uid, $db)
+{
+   //validate ids
+   $rc = validateId("user", "uid", $uid, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   $rc = validateId("user", "uid", $mates_uid, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   $rc = validateId("mate", "mate_id", $users_mate_id, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   
+   $datetime = date("Y-m-d H:i:s");
+   
+   //insert into request table
+   $query="insert into request(mate_id, uid, request_datetime, request_status) values(?, ?, ?, 0)";
+   $sql=$db->prepare($query);
+   $sql->bind_param('iis', $users_mate_id, $mates_uid, $datetime);
+   $sql->execute();
+   //get id generated from the auto increment by the previous query
+   $request_id = $sql->insert_id;
+   $sql->free_result();
+   
+   //check that the insert was successful
+   if($sql != TRUE || $request_id <= 0)
+   {
+      return -110;
+   }
+   
+   return $request_id;
 }
  
 ?>
