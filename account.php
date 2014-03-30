@@ -130,15 +130,15 @@ function get_frictlist($uid, $db)
    get_user_data($uid, $db);
    
    //genderate frictlist table
-   $query="SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 AND (frict.deleted IS NULL OR frict.deleted=0) ORDER BY mate_id ASC;";
+   $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid = ? AND m.deleted=0 ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id";
    $sql=$db->prepare($query);
-   $sql->bind_param('i', $uid);
+   $sql->bind_param('ii', $uid, $uid);
    $sql->execute();
-   $sql->bind_result($mate_id, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_to_date, $frict_base, $notes);
+   $sql->bind_result($mate_id, $accepted, $mates_uid, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_to_date, $frict_base, $notes, $deleted);
    while($sql->fetch())
    {
       //echo frictlist row
-      echo $mate_id."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\n";
+      echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\t".$deleted."\n";
    }
    $sql->free_result();
 }
