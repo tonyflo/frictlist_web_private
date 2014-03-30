@@ -129,7 +129,7 @@ function get_frictlist($uid, $db)
    //echo user data array
    get_user_data($uid, $db);
    
-   //genderate frictlist table
+   //generate frictlist table
    $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid = ? AND m.deleted=0 ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('ii', $uid, $uid);
@@ -139,6 +139,38 @@ function get_frictlist($uid, $db)
    {
       //echo frictlist row
       echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\t".$deleted."\n";
+   }
+   $sql->free_result();
+}
+
+/*
+ * @brief Get a table of requests made to the user (accepted, pending, and rejected; but not deleted)
+ * @param uid the user id of the user
+ * @param db the database object
+ * @retval on success, a table of the user's fricts in which columns are separated by tabs and rows by new lines
+ */
+function get_notifications($uid, $db)
+{
+   //validate ids
+   $rc = validateId("user", "uid", $uid, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   
+   //echo notifications flag
+   echo "notifications\n";
+   
+   //generate notifications table
+   $query="select r.request_id, m.mate_id, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND m.deleted=0 ORDER BY s.first_name ASC";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $uid);
+   $sql->execute();
+   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate);
+   while($sql->fetch())
+   {
+      //echo notifications row
+      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\n";
    }
    $sql->free_result();
 }
