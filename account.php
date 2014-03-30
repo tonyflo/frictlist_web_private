@@ -513,20 +513,21 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
  * @param lastname the last name of the user to search for
  * @param gender the gender of the user to search for
  * @param db the database object
- * @retval if success, a table of uid, username, and birthdays of matching users
+ * @retval if success, a table of uid, username, birthdays, request id of matching users.
+ *         if request hasn't been made, this feild will be NULL
  */
-function search_mate($firstname, $lastname, $gender, $db)
+function search_mate($uid, $firstname, $lastname, $gender, $db)
 {
    //query database for user data
-   $query="SELECT uid, username, birthdate from user where first_name=? AND last_name=? AND gender=?";
+   $query="SELECT b.uid, b.username, b.birthdate, a.request_id from user b left join (select r.uid, r.request_id  from mate m left join request r on m.mate_id = r.mate_id where m.uid = ?) as a on a.uid = b.uid where first_name=? AND last_name=? AND gender=? AND b.uid != ? ORDER BY username ASC";
    $sql=$db->prepare($query);
-   $sql->bind_param('ssi', $firstname, $lastname, $gender);
+   $sql->bind_param('issii', $uid, $firstname, $lastname, $gender, $uid);
    $sql->execute();
-   $sql->bind_result($uid, $username, $bday);
+   $sql->bind_result($uid, $username, $bday, $requeset_id);
    echo "user_search\n";
    while($sql->fetch())
    {
-      echo $uid."\t".$username."\t".$bday."\n";
+      echo $uid."\t".$username."\t".$bday."\t".$requeset_id."\n";
    }
    $sql->free_result();
 }
