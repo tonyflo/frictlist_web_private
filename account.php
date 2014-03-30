@@ -514,7 +514,7 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
  * @param gender the gender of the user to search for
  * @param db the database object
  * @retval if success, a table of uid, username, birthdays, request id of matching users.
- *         if request hasn't been made, this feild will be NULL
+ *         if request hasn't been made, this field will be NULL
  */
 function search_mate($uid, $firstname, $lastname, $gender, $db)
 {
@@ -578,6 +578,29 @@ function send_mate_request($uid, $users_mate_id, $mates_uid, $db)
    }
    
    return $request_id;
+}
+
+/*
+ * @brief Returns a table of the outgoing request status for each mate
+ * @param uid the user id of the user of the app
+ * @param db the database object
+ * @retval if success, a table of mate_id, accepted, and uid (or recipient of request)
+ *         if request hasn't been made, some fields will be NULL
+ */
+function get_outgoing_status($uid, $db)
+{
+   //query database for user data
+   $query="select m.mate_id, m.accepted, r.uid from mate m left join request r on m.mate_id = r.mate_id where m.uid = ? AND m.deleted=0 ORDER BY mate_id ASC";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $uid);
+   $sql->execute();
+   $sql->bind_result($mate_id, $accepted, $recipient_uid);
+   echo "outgoing\n";
+   while($sql->fetch())
+   {
+      echo $mate_id."\t".$accepted."\t".$recipient_uid."\n";
+   }
+   $sql->free_result();
 }
  
 ?>
