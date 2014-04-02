@@ -611,5 +611,71 @@ function send_mate_request($uid, $users_mate_id, $mates_uid, $db)
    
    return $request_id;
 }
+
+/*
+ * @brief Respond to a request to another user
+ * @param uid user id of the user of the app
+ * @param request_id the id of the request
+ * @param mate_id the id of the personal mate of the user who sent the request
+ * @param status Accept (1) or Reject (-1)
+ * @param db the database object
+ * @retval -120 if the update was unsuccessful
+ * @retval -122 if the value of the status was invalid
+ * @retval status if successful
+ */
+function respond_mate_request($uid, $request_id, $mate_id, $status, $db)
+{
+   //validate ids
+   $rc = validateId("user", "uid", $uid, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   $rc = validateId("mate", "mate_id", $mate_id, $db);
+   if($rc != $SUCCESS)
+   {
+      return $rc;
+   }
+   
+   $accept = 1;
+   $reject = -1;
+   $status_as_int = intval($status);
+   
+   //ensure status is valid
+   if($status_as_int != $accept && $status_as_int != $reject)
+   {
+      return -121;
+   }
+   
+   $datetime = date("Y-m-d H:i:s");
+   
+   //todo: look into transactions when updating multiple tables
+   //update mate table with status
+   $query="update mate set accepted=? where mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('ii', $status_as_int, $mate_id);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
+   
+   //update request table with status
+   $query="update request set request_status=?, accept_datetime=? where request_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('isi', $status_as_int, $datetime, $request_id);
+   $sql->execute();
+   $sql->store_result();
+   $numrows=$sql->affected_rows;
+   $sql->free_result();
+   
+   //check result is TRUE meaning the update was successful
+   if($numrows != 1)
+   {
+      //something went wrong when updating mate table
+      return -120;
+   }
+   
+   return $status_as_int;
+}
  
 ?>
