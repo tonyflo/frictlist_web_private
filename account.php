@@ -130,15 +130,15 @@ function get_frictlist($uid, $db)
    get_user_data($uid, $db);
    
    //generate frictlist table
-   $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid = ? AND m.deleted=0 ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND mate.deleted=0 ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id ORDER BY mate_first_name ASC";
+   $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted, B.mate_rating, B.mate_notes, B.mate_deleted, B.mate_last_update from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid = ? AND (m.deleted=0 OR m.deleted IS NULL) ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, mate_rating, mate_notes, mate_deleted, mate_last_update FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND (mate.deleted=0 OR mate.deleted IS NULL)ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('ii', $uid, $uid);
    $sql->execute();
-   $sql->bind_result($mate_id, $accepted, $mates_uid, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_to_date, $frict_base, $notes, $deleted);
+   $sql->bind_result($mate_id, $accepted, $mates_uid, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $mate_last_update);
    while($sql->fetch())
    {
       //echo frictlist row
-      echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_to_date."\t".$frict_base."\t".$notes."\t".$deleted."\n";
+      echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$mate_last_update."\n";
    }
    $sql->free_result();
 }
@@ -162,15 +162,16 @@ function get_notifications($uid, $db)
    echo "notifications\n";
    
    //generate notifications table
-   $query="select r.request_id, m.mate_id, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND m.deleted=0 ORDER BY s.first_name ASC";
+   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, A.accept_datetime, A.last_update, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.last_update, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.mate_last_update FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC;";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
-   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate);
+   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate, $accept_datetime, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $last_update, $deleted, $mate_rating, $mate_notes, $mate_deleted, $mate_last_update);
+   
    while($sql->fetch())
    {
       //echo notifications row
-      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\n";
+      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\t".$accept_datetime."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$last_update."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$mate_last_update."\n";
    }
    $sql->free_result();
 }
@@ -194,7 +195,7 @@ function get_notifications($uid, $db)
  */
 function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $db, $table)
 {
-   if($email == null || $username == null)
+   if($email == null || $username == null || $password == null)
    {
       return -10;
    }
@@ -300,10 +301,12 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $db, $table_user, $t
       return $rc;
    }
    
+   $datetime = date("Y-m-d H:i:s");
+   
    //insert into frict table
-   $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime) values(?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
+   $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime, last_update) values(?, ?, ?, ?, ?, ?, ?)";
    $sql=$db->prepare($query);
-   $sql->bind_param('isiis', $mate_id, $from, $rating, $base, $notes);
+   $sql->bind_param('isiisss', $mate_id, $from, $rating, $base, $notes, $datetime, $datetime);
    $sql->execute();
    //get id generated from the auto increment by the previous query
    $frict_id = $sql->insert_id;
@@ -474,7 +477,7 @@ function remove_frict($frict_id, $db, $table_frict)
    $datetime = date("Y-m-d H:i:s");
 
    //"remove" frict by updating frict table and setting deleted to true
-   $query="update ".$table_frict." set deleted=1, last_update=? where frict_id='".$frict_id."'";
+   $query="update ".$table_frict." set deleted=1, delete_datetime=? where frict_id='".$frict_id."'";
    $sql=$db->prepare($query);
    $sql->bind_param('s', $datetime);
    $sql->execute();
@@ -513,7 +516,7 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
    $datetime = date("Y-m-d H:i:s");
    
    //"remove" all fricts associated with the mate by updating frict table and setting deleted to true
-   $query="update ".$table_frict." set deleted=1, last_update=? where mate_id='".$mate_id."'";
+   $query="UPDATE ".$table_frict." SEt deleted=1, delete_datetime=? WHERE mate_id='".$mate_id."' AND (deleted IS NULL OR deleted=0)";
    $sql=$db->prepare($query);
    $sql->bind_param('s', $datetime);
    $sql->execute();
