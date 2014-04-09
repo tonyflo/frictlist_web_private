@@ -162,7 +162,7 @@ function get_notifications($uid, $db)
    echo "notifications\n";
    
    //generate notifications table
-   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
+   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (accepted != -2) AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
@@ -492,7 +492,7 @@ function update_mate($uid, $mate_id, $firstname, $lastname, $gender, $db, $table
  * @param frict_id the id of the frict
  * @param db the database object
  * @param table_frict the table name of the frict table
- * @param creator the creator of the frict is 1, 0 otherwist
+ * @param creator the creator of the frict is 1, 0 otherwise
  * @retval -50 if the deletion was unsuccessful
  * @retval -51 if the creator flag is not 0 or 1
  * @retval frict_id if the deletion was successful
@@ -523,7 +523,6 @@ function remove_frict($frict_id, $creator, $db, $table_frict)
       return -91;
    }
    
-   
    $sql=$db->prepare($query);
    $sql->bind_param('s', $datetime);
    $sql->execute();
@@ -547,10 +546,12 @@ function remove_frict($frict_id, $creator, $db, $table_frict)
  * @param db the database object
  * @param table_mate the table name of the mate table
  * @param table_frict the table name of the frict table
+ * @param creator the creator of the frict is 1, 0 otherwise
  * @retval -40 if the deletion was unsuccessful
+ * @retval -41 if the creator variable wan't 1 or 0
  * @retval mate_id if the deletion was successful
  */
-function remove_mate($mate_id, $db, $table_mate, $table_frict)
+function remove_mate($mate_id, $creator, $db, $table_mate, $table_frict)
 {
    //validate ids
    $rc = validateId($table_mate, "mate_id", $mate_id, $db);
@@ -562,21 +563,56 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
    $datetime = date("Y-m-d H:i:s");
    
    //"remove" all fricts associated with the mate by updating frict table and setting deleted to true
-   $query="UPDATE ".$table_frict." SEt deleted=1, delete_datetime=? WHERE mate_id='".$mate_id."' AND (deleted IS NULL OR deleted=0)";
-   $sql=$db->prepare($query);
-   $sql->bind_param('s', $datetime);
-   $sql->execute();
-   $sql->store_result();
-   $sql->free_result();
-
-   //"remove" mate by updating mate table and setting deleted to true
-   $query="update ".$table_mate." set deleted=1, last_update=? where mate_id='".$mate_id."'";
+   $query="";
+   if($creator == 1)
+   {
+      $query="update ".$table_frict." set deleted=1, delete_datetime=? WHERE mate_id='".$mate_id."' AND (deleted IS NULL OR deleted=0)";
+   }
+   else if($creator == 0)
+   {
+      $query="update ".$table_frict." set mate_deleted=1, mate_last_update=? WHERE mate_id='".$mate_id."' AND (mate_deleted IS NULL OR mate_deleted=0)";
+   }
+   else
+   {
+      return -41;
+   }
+   
    $sql=$db->prepare($query);
    $sql->bind_param('s', $datetime);
    $sql->execute();
    $sql->store_result();
    $numrows=$sql->affected_rows;
    $sql->free_result();
+
+   $numrows=0;
+   //remove mate
+   if($creator == 1)
+   {
+      //"remove" mate by updating mate table and setting deleted to true
+      $query="update ".$table_mate." set deleted=1, last_update=? where mate_id='".$mate_id."'";
+      $sql=$db->prepare($query);
+      $sql->bind_param('s', $datetime);
+      $sql->execute();
+      $sql->store_result();
+      $numrows=$sql->affected_rows;
+      $sql->free_result();
+   }
+   else if($creator == 0)
+   {
+      //A mate who has accepted a request and is now removing the user who sent the initial request. This mate cannot perform this action like above. The Accepted list, which is where this delete originated from, is generated based off of the notification table.  We will set the status of the accepted column in the mate table to -2 which will represent a deletion.  The -2 will be used by the MySQL server to not return this mate to the recipient user.
+      $remove_an_accepted_request = -2;
+      $query="update mate set accepted=? where mate_id=?";
+      $sql=$db->prepare($query);
+      $sql->bind_param('ii', $remove_an_accepted_request, $mate_id);
+      $sql->execute();
+      $sql->store_result();
+      $numrows=$sql->affected_rows;
+      $sql->free_result();
+   }
+   else
+   {
+      return -41;
+   }
    
    //check result is TRUE meaning the update was successful
    if($numrows != 1)
@@ -584,7 +620,6 @@ function remove_mate($mate_id, $db, $table_mate, $table_frict)
       //something went wrong when updating mate table
       return -40;
    }
-
    return $mate_id;
 }
 
