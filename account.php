@@ -130,15 +130,15 @@ function get_frictlist($uid, $db)
    get_user_data($uid, $db);
    
    //generate frictlist table
-   $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid=? AND (m.deleted=0 OR m.deleted IS NULL) ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, mate_rating, mate_notes, mate_deleted, creator FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND (mate.deleted=0 OR mate.deleted IS NULL) ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id ORDER BY mate_first_name ASC";
+   $query="select A.mate_id, A.accepted, A.uid as mates_uid, B.mate_first_name, B.mate_last_name, B.mate_gender, B.frict_id, B.frict_from_date, B.frict_rating, B.frict_base, B.notes, B.deleted, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator, B.lat, B.lon from (select m.mate_id, m.accepted, r.uid from mate m left outer join request r on m.mate_id = r.mate_id where m.uid=? AND (m.deleted=0 OR m.deleted IS NULL) ORDER BY mate_id ASC) as A left join (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, mate_rating, mate_notes, mate_deleted, creator, lat, lon FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id WHERE uid=? AND (mate.deleted=0 OR mate.deleted IS NULL) ORDER BY mate_id ASC) as B on A.mate_id=B.mate_id ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('ii', $uid, $uid);
    $sql->execute();
-   $sql->bind_result($mate_id, $accepted, $mates_uid, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator);
+   $sql->bind_result($mate_id, $accepted, $mates_uid, $mate_first_name, $mate_last_name, $mate_gender, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator, $lat, $lon);
    while($sql->fetch())
    {
       //echo frictlist row
-      echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\n";
+      echo $mate_id."\t".$accepted."\t".$mates_uid."\t".$mate_first_name."\t".$mate_last_name."\t".$mate_gender."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\t".$lat."\t".$lon."\n";
    }
    $sql->free_result();
 }
@@ -162,16 +162,16 @@ function get_notifications($uid, $db)
    echo "notifications\n";
    
    //generate notifications table
-   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (accepted != -2) AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
+   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator, B.lat, B.lon FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (accepted != -2) AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator, lat, lon FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
-   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator);
+   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator, $lat, $lon);
    
    while($sql->fetch())
    {
       //echo notifications row
-      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\n";
+      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\t".$lat."\t".$lon."\n";
    }
    $sql->free_result();
 }
@@ -185,6 +185,7 @@ function get_notifications($uid, $db)
  * @param password a password between 6 and 255 characters
  * @param gender the gender of account: 0 if male, 1 is female
  * @param birthdate the birthdate of the user
+ * @param platform 1 for iOS, 2 for Android, etc
  * @param db the database object
  * @param table the table name
  * @retval the primary key associated with the new account
@@ -193,7 +194,7 @@ function get_notifications($uid, $db)
  * @retval -7 if signing up fails
  * @retval -10 if the username or email is null
  */
-function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $db, $table)
+function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $platform, $db, $table)
 {
    if($email == null || $username == null || $password == null)
    {
@@ -235,9 +236,9 @@ function sign_up($firstname, $lastname, $username, $email, $password, $gender, $
    $hash=pw_hash($password);
 
    //the email address is available so proceed with creating account
-   $query2="insert into ".$table."(email, username, password, first_name, last_name, birthdate, gender, creation_datetime) values(?, ?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."')";
+   $query2="insert into ".$table."(email, username, password, first_name, last_name, birthdate, gender, creation_datetime, platform) values(?, ?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."', ?)";
    $sql2=$db->prepare($query2);
-   $sql2->bind_param('ssssssi', $email, $username, $hash, $firstname, $lastname, $birthdate, $gender);
+   $sql2->bind_param('ssssssii', $email, $username, $hash, $firstname, $lastname, $birthdate, $gender, $platform);
    $sql2->execute();
    $sql2->free_result();
    
@@ -285,6 +286,9 @@ function pw_hash($password)
  * @param from the first occurrence of the frict
  * @param rating the rating of the frict
  * @param notes notes about the frict
+ * @param creator creator of the frictlist (1 if user is creator of fl)
+ * @param lat latitude
+ * @param lon longitude
  * @param db the database object
  * @param table_user the table name of the user table
  * @param table_mate the table name of the hookup table
@@ -294,7 +298,7 @@ function pw_hash($password)
  * @retval -81 creator parameter was not 0 or 1
  * @retval frict_id on success
  */
-function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $db, $table_user, $table_mate, $table_frict)
+function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $lat, $lon, $db, $table_user, $table_mate, $table_frict)
 {
    //validate ids
    $rc = validateId($table_mate, "mate_id", $mate_id, $db);
@@ -309,11 +313,11 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $db, $tabl
    $query="";
    if($creator == 1)
    {
-      $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime, last_update, creator) values(?, ?, ?, ?, ?, ?, ?, ?)";
+      $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime, last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
    }
    else if($creator == 0)
    {
-      $query="insert into ".$table_frict."(mate_id, frict_from_date, mate_rating, frict_base, mate_notes, creation_datetime, mate_last_update, creator) values(?, ?, ?, ?, ?, ?, ?, ?)";
+      $query="insert into ".$table_frict."(mate_id, frict_from_date, mate_rating, frict_base, mate_notes, creation_datetime, mate_last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
    }
    else
    {
@@ -321,7 +325,7 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $db, $tabl
    }
    
    $sql=$db->prepare($query);
-   $sql->bind_param('isiisssi', $mate_id, $from, $rating, $base, $notes, $datetime, $datetime, $creator);
+   $sql->bind_param('isiisssidd', $mate_id, $from, $rating, $base, $notes, $datetime, $datetime, $creator, $lat, $lon);
    $sql->execute();
    //get id generated from the auto increment by the previous query
    $frict_id = $sql->insert_id;
@@ -384,6 +388,8 @@ function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table
  * @param rating the rating of the frict
  * @param notes notes about the frict
  * @param creator 1 if the user created the frictlist, 0 otherwise
+ * @param lat latitude
+ * @param lon longitude
  * @param db the database object
  * @param table_mate the table name of the hookup table
  * @param table_frict the table name of the frict table
@@ -391,7 +397,7 @@ function add_mate($uid, $firstname, $lastname, $gender, $db, $table_user, $table
  * @retval -91 if the creator flag was not 0 or 1
  * @retval frict_id if the update of the hookup and frict table was successful
  */
-function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creator, $db, $table_mate, $table_frict)
+function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creator, $lat, $lon, $db, $table_mate, $table_frict)
 {
    //validate ids
    $rc = validateId($table_frict, "frict_id", $frict_id, $db);
@@ -411,11 +417,11 @@ function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creat
    $query="";
    if($creator == 1)
    {
-      $query="update ".$table_frict." set frict_from_date=?, frict_rating=?, frict_base=?, notes=?, last_update=? where frict_id='".$frict_id."'";
+      $query="update ".$table_frict." set frict_from_date=?, frict_rating=?, frict_base=?, notes=?, lat=?, lon=?, last_update=? where frict_id='".$frict_id."'";
    }
    else if($creator == 0)
    {
-      $query="update ".$table_frict." set frict_from_date=?, mate_rating=?, frict_base=?, mate_notes=?, mate_last_update=? where frict_id='".$frict_id."'";
+      $query="update ".$table_frict." set frict_from_date=?, mate_rating=?, frict_base=?, mate_notes=?, lat=?, lon=?, mate_last_update=? where frict_id='".$frict_id."'";
    }
    else
    {
@@ -423,7 +429,7 @@ function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creat
    }
    
    $sql=$db->prepare($query);
-   $sql->bind_param('siiss', $from, $rating, $base, $notes, $datetime);
+   $sql->bind_param('siisdds', $from, $rating, $base, $notes, $lat, $lon, $datetime);
    $sql->execute();
    $sql->store_result();
    $numrows=$sql->affected_rows;
