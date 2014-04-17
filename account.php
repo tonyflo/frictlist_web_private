@@ -526,7 +526,7 @@ function remove_frict($frict_id, $creator, $db, $table_frict)
    }
    else
    {
-      return -91;
+      return -51;
    }
    
    $sql=$db->prepare($query);
