@@ -66,13 +66,14 @@ function get_user_data($uid, $db)
  * @brief Allows a user to sign into their account
  * @param username a username
  * @param password a password between 6 and 255 characters
+ * @param token the user's device token for apns
  * @param db the database object
  * @param table the table name
  * @retval the primary key associated with a valid email and password
  * @retval -1 if the username was not found in the database
  * @retval -2 if the password is wrong
  */
-function sign_in($username, $password, $db, $table)
+function sign_in($username, $password, $token, $db, $table)
 {
    //query database for provided email
    $query="select uid, password from ".$table." where username=?";
@@ -97,6 +98,9 @@ function sign_in($username, $password, $db, $table)
         //the provided password was wrong
         return -2;
       }
+      
+      //register the device for push notifications
+      update_apns_token($uid, $token, $db);
       
       //return the valid uid
       return $uid;
@@ -186,6 +190,7 @@ function get_notifications($uid, $db)
  * @param gender the gender of account: 0 if male, 1 is female
  * @param birthdate the birthdate of the user
  * @param platform 1 for iOS, 2 for Android, etc
+ * @param token the user's device token for apns
  * @param db the database object
  * @param table the table name
  * @retval the primary key associated with the new account
@@ -194,7 +199,7 @@ function get_notifications($uid, $db)
  * @retval -7 if signing up fails
  * @retval -10 if the username or email is null
  */
-function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $platform, $db, $table)
+function sign_up($firstname, $lastname, $username, $email, $password, $gender, $birthdate, $platform, $token, $db, $table)
 {
    if($email == null || $username == null || $password == null)
    {
@@ -236,9 +241,9 @@ function sign_up($firstname, $lastname, $username, $email, $password, $gender, $
    $hash=pw_hash($password);
 
    //the email address is available so proceed with creating account
-   $query2="insert into ".$table."(email, username, password, first_name, last_name, birthdate, gender, creation_datetime, platform) values(?, ?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."', ?)";
+   $query2="insert into ".$table."(email, username, password, first_name, last_name, birthdate, gender, creation_datetime, platform, token) values(?, ?, ?, ?, ?, ?, ?, '".date("Y-m-d H:i:s")."', ?, ?)";
    $sql2=$db->prepare($query2);
-   $sql2->bind_param('ssssssii', $email, $username, $hash, $firstname, $lastname, $birthdate, $gender, $platform);
+   $sql2->bind_param('ssssssiis', $email, $username, $hash, $firstname, $lastname, $birthdate, $gender, $platform, $token);
    $sql2->execute();
    $sql2->free_result();
    
@@ -246,7 +251,7 @@ function sign_up($firstname, $lastname, $username, $email, $password, $gender, $
    if($sql2 == TRUE)
    {
       //sign in as normal to get the uid
-      return sign_in($username, $password, $db, $table);
+      return sign_in($username, $password, $token, $db, $table);
    }
    else
    {
@@ -766,6 +771,27 @@ function respond_mate_request($uid, $request_id, $mate_id, $status, $db)
    }
    
    return $status_as_int;
+}
+
+/*
+ * @brief update device token for APNS
+ * @param uid user id of the user of the app
+ * @param token the device token
+ * @param db the database object
+ * @retval NONE
+ */
+function update_apns_token($uid, $token, $db)
+{
+   if($uid > 0 && isset($token) && $token != "")
+   {
+      $query="update user set token=? where uid=?";
+      $sql=$db->prepare($query);
+      $sql->bind_param('si', $token, $uid);
+      $sql->execute();
+      $sql->store_result();
+      $numrows=$sql->affected_rows;
+      $sql->free_result();
+   }
 }
  
 ?>
