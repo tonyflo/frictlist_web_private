@@ -69,7 +69,24 @@ function getDeviceToken($uid, $db)
    $sql->free_result();
    return $token;
 }
- 
+
+/*
+ * @brief get date of frict given frict id
+ * @param frict_id the frict's unique id
+ * @retval the user's device token
+ */
+function getFrictDate($frict_id, $db)
+{
+   $query="SELECT frict_from_date FROM frict WHERE frict_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $frict_id);
+   $sql->execute();
+   $sql->bind_result($date);
+   $sql->fetch();
+   $sql->free_result();
+   return $date;
+}
+
 /*
  * @brief get first and last name given user id
  * @param uid the user's unique id
@@ -636,10 +653,14 @@ function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creat
    if($creator == 1)
    {
       $query="update ".$table_frict." set frict_from_date=?, frict_rating=?, frict_base=?, notes=?, lat=?, lon=?, last_update=? where frict_id='".$frict_id."'";
+      $name=getFirstLastNameOfCreatorGivenMid($mate_id, $db);
+      $token=getTokenOfCreatorGivenMid($mate_id, $db);
    }
    else if($creator == 0)
    {
       $query="update ".$table_frict." set frict_from_date=?, mate_rating=?, frict_base=?, mate_notes=?, lat=?, lon=?, mate_last_update=? where frict_id='".$frict_id."'";
+      $name=getFirstLastNameOfMateGivenMid($mate_id, $db);
+      $token=getDeviceTokenOfMateGivenMid($mate_id, $db);
    }
    else
    {
@@ -658,7 +679,23 @@ function update_frict($frict_id, $mate_id, $base, $from, $rating, $notes, $creat
    {
       //something went wrong when updating hookup table
       return -90;
-   } 
+   }
+   
+   //check if frictlist is shared
+   if(isShared($mate_id, $db))
+   {
+      //format date of frict
+      $formatted_date=date('F j, Y', strtotime(getFrictDate($frict_id, $db)));
+      
+      //build the message
+      $message=$name[0]." ".$name[1]." updated your ".$formatted_date." frict";
+   
+      if(isset($token) && $token != "" && $token != "(null)")
+      {
+         //send the push notification
+         apns_send($token, $message);
+      } 
+   }
    
    return $frict_id;
 }
