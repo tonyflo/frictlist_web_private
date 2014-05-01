@@ -4,9 +4,175 @@
  * @author Tony Florida
  * @brief Functions that allow a user to interact with their data
  */
+
+include 'apns.php';
  
- $SUCCESS = 0;
+$SUCCESS = 0;
+
+/*************************************************************************
+ * Private Helper Functions
+ ************************************************************************/
+
+function getStatusAsString($status)
+{
+   if($status == 1)
+   {
+      return "accepted";
+   }
+   else
+   {
+      return "rejected";
+   }
+}
+
+/*
+ * @brief Converts a string into a hash
+ * @source http://alias.io/2010/01/store-passwords-safely-with-php-and-mysql/
+ * @param password a password between 6 and 255 characters
+ * @retval the hashed value of the password
+ */
+function pw_hash($password)
+{
+    // A higher "cost" is more secure but consumes more processing power
+    $cost = 10;
+
+    // Create a random salt
+    $salt = strtr(base64_encode(mcrypt_create_iv(16, MCRYPT_DEV_URANDOM)), '+', '.');
+
+    // Prefix information about the hash so PHP knows how to verify it later.
+    // "$2a$" Means we're using the Blowfish algorithm. The following two digits are the cost parameter.
+    $salt = sprintf("$2a$%02d$", $cost) . $salt;
+
+    // Hash the password with the salt
+    $hashed = crypt($password, $salt);
+    
+    return $hashed;
+} //end pw_hash()
+
+/*************************************************************************
+ * Private MySQL Helper Functions
+ ************************************************************************/
+
+/*
+ * @brief get device token given uid
+ * @param uid the user's unique id
+ * @retval the user's device token
+ */
+function getDeviceToken($uid, $db)
+{
+   $query="SELECT token from user where uid=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $uid);
+   $sql->execute();
+   $sql->bind_result($token);
+   $sql->fetch();
+   $sql->free_result();
+   return $token;
+}
  
+/*
+ * @brief get first and last name given user id
+ * @param uid the user's unique id
+ * @retval the user's first and last name as an array
+ */
+function getFirstLastNameGivenUid($uid, $db)
+{
+   $query="SELECT first_name, last_name FROM user WHERE uid=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $uid);
+   $sql->execute();
+   $sql->bind_result($first, $last);
+   $sql->fetch();
+   $sql->free_result();
+   return array($first, $last);
+}
+
+/*
+ * @brief get first and last name of mate given mate id
+ * @param mid the mate's unique id
+ * @retval the mate's first and last name as an array
+ */
+function getFirstLastNameOfMateGivenMid($mid, $db)
+{
+   $query="SELECT mate_first_name, mate_last_name FROM mate WHERE mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $mid);
+   $sql->execute();
+   $sql->bind_result($first, $last);
+   $sql->fetch();
+   $sql->free_result();
+   return array($first, $last);
+}
+
+/*
+ * @brief get first and last name of frictlist creator given mate id
+ * @param mid the mate's unique id
+ * @retval the creator of the frictlist's first and last name as an array
+ */
+function getFirstLastNameOfCreatorGivenMid($mid, $db)
+{
+   $query="SELECT first_name, last_name FROM user LEFT JOIN mate ON mate.uid=user.uid WHERE mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $mid);
+   $sql->execute();
+   $sql->bind_result($first, $last);
+   $sql->fetch();
+   $sql->free_result();
+   return array($first, $last);
+}
+
+/*
+ * @brief get user's device token given a request id
+ * @param rid the unique id associated with the request
+ * @retval the user's device token who made the requst and will receive
+ * the push notification
+ */
+function getDeviceTokenFromRequestId($rid, $db)
+{
+   $query="SELECT token from request left join user on user.uid=request.uid where request_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $rid);
+   $sql->execute();
+   $sql->bind_result($token);
+   $sql->fetch();
+   $sql->free_result();
+   return $token;
+}
+
+/*
+ * @brief get mate's device token given a mate id
+ * @param mid the unique id associated with the mate
+ * @retval the mate's device token
+ */
+function getDeviceTokenOfMateGivenMid($mid, $db)
+{
+   $query="SELECT token FROM user LEFT JOIN request ON request.uid=user.uid WHERE mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $mid);
+   $sql->execute();
+   $sql->bind_result($token);
+   $sql->fetch();
+   $sql->free_result();
+   return $token;
+}
+
+/*
+ * @brief get device token of frictlist creator given mate id
+ * @param mid the mate's unique id
+ * @retval the creator of the frictlist's device token
+ */
+function getTokenOfCreatorGivenMid($mid, $db)
+{
+   $query="SELECT token FROM user LEFT JOIN mate ON mate.uid=user.uid WHERE mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $mid);
+   $sql->execute();
+   $sql->bind_result($token);
+   $sql->fetch();
+   $sql->free_result();
+   return $token;
+}
+
 /*
  * @brief Validates an id by checking if it exists in the table and is unique
  * @param table The name of the table to g
@@ -61,7 +227,57 @@ function get_user_data($uid, $db)
    }
    $sql->free_result();
 }
+
+/*
+ * @brief update device token for APNS
+ * @param uid user id of the user of the app
+ * @param token the device token
+ * @param db the database object
+ * @retval NONE
+ */
+function update_apns_token($uid, $token, $db)
+{
+   if($uid > 0 && isset($token) && $token != "" && $token != "(null)")
+   {
+      $query="update user set token=? where uid=?";
+      $sql=$db->prepare($query);
+      $sql->bind_param('si', $token, $uid);
+      $sql->execute();
+      $sql->store_result();
+      $numrows=$sql->affected_rows;
+      $sql->free_result();
+   }
+}
+
+/*
+ * @brief determine if the frictlist is shared
+ * @param mate_id the mate_id in question
+ * @retval true if the frictlist is shared, false otherwise
+ */
+function isShared($mate_id, $db)
+{
+   $query="SELECT accepted FROM mate WHERE mate_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $mate_id);
+   $sql->execute();
+   $sql->bind_result($accepted);
+   $sql->fetch();
+   $sql->free_result();
+   
+   if($accepted > 0)
+   {
+      return true;
+   }
+   else
+   {
+      return false;   
+   }
+}
  
+/*************************************************************************
+ * Public MySQL Functions
+ ************************************************************************/
+
 /*
  * @brief Allows a user to sign into their account
  * @param username a username
@@ -261,30 +477,6 @@ function sign_up($firstname, $lastname, $username, $email, $password, $gender, $
 } //end sign_up()
 
 /*
- * @brief Converts a string into a hash
- * @source http://alias.io/2010/01/store-passwords-safely-with-php-and-mysql/
- * @param password a password between 6 and 255 characters
- * @retval the hashed value of the password
- */
-function pw_hash($password)
-{
-    // A higher "cost" is more secure but consumes more processing power
-    $cost = 10;
-
-    // Create a random salt
-    $salt = strtr(base64_encode(mcrypt_create_iv(16, MCRYPT_DEV_URANDOM)), '+', '.');
-
-    // Prefix information about the hash so PHP knows how to verify it later.
-    // "$2a$" Means we're using the Blowfish algorithm. The following two digits are the cost parameter.
-    $salt = sprintf("$2a$%02d$", $cost) . $salt;
-
-    // Hash the password with the salt
-    $hashed = crypt($password, $salt);
-    
-    return $hashed;
-} //end pw_hash()
-
-/*
  * @brief Allows a user to add a frict to their list
  * @param mate_id the mate
  * @parma base the base of the frict
@@ -314,15 +506,23 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $lat, $lon
    
    $datetime = date("Y-m-d H:i:s");
    
+   //declare variables needed for push notification
+   $name="Your mate";
+   $token="";
+   
    //insert into frict table
    $query="";
    if($creator == 1)
    {
       $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime, last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      $name=getFirstLastNameOfCreatorGivenMid($mate_id, $db);
+      $token=getTokenOfCreatorGivenMid($mate_id, $db);
    }
    else if($creator == 0)
    {
       $query="insert into ".$table_frict."(mate_id, frict_from_date, mate_rating, frict_base, mate_notes, creation_datetime, mate_last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+      $name=getFirstLastNameOfMateGivenMid($mate_id, $db);
+      $token=getDeviceTokenOfMateGivenMid($mate_id, $db);
    }
    else
    {
@@ -340,6 +540,19 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $lat, $lon
    if($sql != TRUE || $frict_id <= 0)
    {
       return -80;
+   }
+   
+   //check if frictlist is shared
+   if(isShared($mate_id, $db))
+   {
+      //build the message
+      $message=$name[0]." ".$name[1]." added a frict to your frictlist";
+   
+      if(isset($token) && $token != "" && $token != "(null)")
+      {
+         //send the push notification
+         apns_send($token, $message);
+      } 
    }
    
    return $frict_id;
@@ -704,6 +917,22 @@ function send_mate_request($uid, $users_mate_id, $mates_uid, $db)
       return -110;
    }
    
+   //apns
+   //get first and last name of the user
+   $name=getFirstLastNameGivenUid($uid, $db);
+
+   //get the device token of the recipient of the push notification
+   $token=getDeviceTokenFromRequestId($request_id, $db);
+
+   //build the message
+   $message=$name[0]." ".$name[1]." sent you a request";
+   
+   if(isset($token) && $token != "" && $token != "(null)")
+   {
+      //send the push notification
+      apns_send($token, $message);
+   } 
+   
    return $request_id;
 }
 
@@ -769,29 +998,24 @@ function respond_mate_request($uid, $request_id, $mate_id, $status, $db)
       //something went wrong when updating mate table
       return -120;
    }
-   
-   return $status_as_int;
-}
 
-/*
- * @brief update device token for APNS
- * @param uid user id of the user of the app
- * @param token the device token
- * @param db the database object
- * @retval NONE
- */
-function update_apns_token($uid, $token, $db)
-{
-   if($uid > 0 && isset($token) && $token != "")
+   //apns
+   //get first and last name of the user
+   $name=getFirstLastNameGivenUid($uid, $db);
+
+   //get the device token of the recipient of the push notification
+   $token=getDeviceTokenFromRequestId($request_id, $db);
+
+   //build the message
+   $message=$name[0]." ".$name[1]." ".getStatusAsString($status_as_int)." your request";
+   
+   if(isset($token) && $token != "" && $token != "(null)")
    {
-      $query="update user set token=? where uid=?";
-      $sql=$db->prepare($query);
-      $sql->bind_param('si', $token, $uid);
-      $sql->execute();
-      $sql->store_result();
-      $numrows=$sql->affected_rows;
-      $sql->free_result();
-   }
+      //send the push notification
+      apns_send($token, $message);
+   } 
+
+   return $status_as_int;
 }
  
 ?>
