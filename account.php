@@ -139,14 +139,32 @@ function getFirstLastNameOfCreatorGivenMid($mid, $db)
 }
 
 /*
- * @brief get user's device token given a request id
+ * @brief get user's device token given a request id for sending a request
  * @param rid the unique id associated with the request
  * @retval the user's device token who made the requst and will receive
  * the push notification
  */
-function getDeviceTokenFromRequestId($rid, $db)
+function getDeviceTokenFromRequestIdForSendingRequest($rid, $db)
 {
    $query="SELECT token from request left join user on user.uid=request.uid where request_id=?";
+   $sql=$db->prepare($query);
+   $sql->bind_param('i', $rid);
+   $sql->execute();
+   $sql->bind_result($token);
+   $sql->fetch();
+   $sql->free_result();
+   return $token;
+}
+
+/*
+ * @brief get user's device token given a request id for responding to a request
+ * @param rid the unique id associated with the request
+ * @retval the user's device token who made the requst and will receive
+ * the push notification
+ */
+function getDeviceTokenFromRequestIdForRespondingRequest($rid, $db)
+{
+   $query="SELECT token from request left join mate on mate.mate_id=request.mate_id left join user on mate.uid=user.uid where request_id=?";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $rid);
    $sql->execute();
@@ -399,16 +417,16 @@ function get_notifications($uid, $db)
    echo "notifications\n";
    
    //generate notifications table
-   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator, B.lat, B.lon FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (accepted != -2) AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator, lat, lon FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
+   $query="SELECT A.request_id, A.mate_id, A.request_status as status, A.first_name, A.last_name, A.username, A.gender as sex, A.birthdate, B.frict_id, B.frict_from_date, B.frict_rating as f_rate, B.frict_base, B.notes, B.deleted as del, B.mate_rating, B.mate_notes, B.mate_deleted, B.creator, B.lat, B.lon, A.deleted as fl_creator_deleted_mate FROM (select r.request_id, m.mate_id, m.last_update, r.request_status, s.first_name, s.last_name, s.username, s.gender, s.birthdate, r.accept_datetime, m.deleted from request r join mate m on r.mate_id = m.mate_id join user s on s.uid = m.uid where r.uid=? AND (accepted != -2) AND (deleted = 0 OR (deleted = 1 AND r.accept_datetime < m.last_update)) ORDER BY s.first_name ASC) AS A LEFT JOIN (SELECT mate.mate_id, mate_first_name, mate_last_name, mate_gender, frict_id, frict_from_date, frict_rating, frict_base, notes, frict.deleted, frict.last_update, mate_rating, mate_notes, mate_deleted, mate_last_update, creation_datetime, delete_datetime, creator, lat, lon FROM mate LEFT JOIN frict ON mate.mate_id=frict.mate_id ORDER BY mate_id ASC) AS B ON A.mate_id=B.mate_id WHERE (B.delete_datetime > A.accept_datetime) OR (B.deleted = 0 OR B.deleted IS NULL) OR (B.creation_datetime > A.accept_datetime) ORDER BY mate_first_name ASC";
    $sql=$db->prepare($query);
    $sql->bind_param('i', $uid);
    $sql->execute();
-   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator, $lat, $lon);
+   $sql->bind_result($request_id, $mate_id, $request_status, $first_name, $last_name, $username, $gender, $birthdate, $frict_id, $frict_from_date, $frict_rating, $frict_base, $notes, $deleted, $mate_rating, $mate_notes, $mate_deleted, $creator, $lat, $lon, $fl_creator_deleted_mate);
    
    while($sql->fetch())
    {
       //echo notifications row
-      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\t".$lat."\t".$lon."\n";
+      echo $request_id."\t".$mate_id."\t".$request_status."\t".$first_name."\t".$last_name."\t".$username."\t".$gender."\t".$birthdate."\t".$frict_id."\t".$frict_from_date."\t".$frict_rating."\t".$frict_base."\t".$notes."\t".$deleted."\t".$mate_rating."\t".$mate_notes."\t".$mate_deleted."\t".$creator."\t".$lat."\t".$lon."\t".$fl_creator_deleted_mate."\n";
    }
    $sql->free_result();
 }
@@ -533,13 +551,13 @@ function add_frict($mate_id, $base, $from, $rating, $notes, $creator, $lat, $lon
    {
       $query="insert into ".$table_frict."(mate_id, frict_from_date, frict_rating, frict_base, notes, creation_datetime, last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
       $name=getFirstLastNameOfCreatorGivenMid($mate_id, $db);
-      $token=getTokenOfCreatorGivenMid($mate_id, $db);
+      $token=getDeviceTokenOfMateGivenMid($mate_id, $db);
    }
    else if($creator == 0)
    {
       $query="insert into ".$table_frict."(mate_id, frict_from_date, mate_rating, frict_base, mate_notes, creation_datetime, mate_last_update, creator, lat, lon) values(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
       $name=getFirstLastNameOfMateGivenMid($mate_id, $db);
-      $token=getDeviceTokenOfMateGivenMid($mate_id, $db);
+      $token=getTokenOfCreatorGivenMid($mate_id, $db);
    }
    else
    {
@@ -959,7 +977,7 @@ function send_mate_request($uid, $users_mate_id, $mates_uid, $db)
    $name=getFirstLastNameGivenUid($uid, $db);
 
    //get the device token of the recipient of the push notification
-   $token=getDeviceTokenFromRequestId($request_id, $db);
+   $token=getDeviceTokenFromRequestIdForSendingRequest($request_id, $db);
 
    //build the message
    $message=$name[0]." ".$name[1]." sent you a request";
@@ -1041,7 +1059,7 @@ function respond_mate_request($uid, $request_id, $mate_id, $status, $db)
    $name=getFirstLastNameGivenUid($uid, $db);
 
    //get the device token of the recipient of the push notification
-   $token=getDeviceTokenFromRequestId($request_id, $db);
+   $token=getDeviceTokenFromRequestIdForRespondingRequest($request_id, $db);
 
    //build the message
    $message=$name[0]." ".$name[1]." ".getStatusAsString($status_as_int)." your request";
