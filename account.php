@@ -914,9 +914,9 @@ function remove_mate($mate_id, $creator, $db, $table_mate, $table_frict)
 function search_mate($uid, $firstname, $lastname, $gender, $db)
 {
    //query database for user data
-   $query="SELECT b.uid, b.username, b.birthdate, a.request_id from user b left join (select r.uid, r.request_id  from mate m left join request r on m.mate_id = r.mate_id where m.uid = ?) as a on a.uid = b.uid where first_name=? AND last_name=? AND gender=? AND b.uid != ? ORDER BY username ASC";
+   $query="SELECT b.uid, b.username, b.birthdate, if(a.request_id IS NULL, (select r.request_id  from mate m left join request r on m.mate_id = r.mate_id left join user u on m.uid = u.uid where r.uid=? AND u.username=b.username), a.request_id) as request_id from user b left join (select r.uid, r.request_id  from mate m left join request r on m.mate_id = r.mate_id where m.uid = ?) as a on a.uid = b.uid where first_name=? AND last_name=? AND gender=? AND b.uid != ? ORDER BY username ASC;";
    $sql=$db->prepare($query);
-   $sql->bind_param('issii', $uid, $firstname, $lastname, $gender, $uid);
+   $sql->bind_param('iissii', $uid, $uid, $firstname, $lastname, $gender, $uid);
    $sql->execute();
    $sql->bind_result($uid, $username, $bday, $requeset_id);
    echo "user_search\n";
