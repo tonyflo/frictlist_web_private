@@ -1072,5 +1072,61 @@ function respond_mate_request($uid, $request_id, $mate_id, $status, $db)
 
    return $status_as_int;
 }
+
+/*
+ * @brief Insert row into share table when user attempts to share app via sms or email 
+ * @param uid the user id of the user
+ * @param share_type 0 sms, 1 email
+ * @param share_status 0 sent, 1 cancelled, 2 failed, 3 saved
+ * @param mate_id the unique id of the mate who the user is trying to share the app with
+ * @param db the database object
+ * @return This function does not actually return. The application doesn't care if the insert was successful.
+ * @retval -130 if the insert was unsuccessful
+ * @retval -131 if share_type is not 0 or 1
+ * @retval -132 if share_status is not 0, 1, 2, or 3
+ * @retval the mate_id of the mate if success
+ */
+function add_share($uid, $share_type, $share_status, $mate_id, $db)
+{
+   //validate ids
+   $rc = validateId("user", "uid", $uid, $db);
+   if($rc != $SUCCESS)
+   {
+      //return $rc;
+	  break;
+   }
+   
+   //validate inputs
+   if(0 > $share_type || 1 < $share_type)
+   {
+      //return -131;
+	  break;
+   }
+   if(0 > $share_status || 3 < $share_status)
+   {
+      //return -132;
+	  break;
+   }
+
+   $datetime = date("Y-m-d H:i:s");
+ 
+   //insert into share table
+   $query="INSERT INTO share(uid, share_type, share_status, mate_id, share_datetime) VALUES(?, ?, ?, ?, '".$datetime."')";
+   $sql=$db->prepare($query);
+   $sql->bind_param('iiii', $uid, $share_type, $share_status, $mate_id);
+   $sql->execute();
+   //get id generated from the auto increment by the previous query
+   $share_id = $sql->insert_id;
+   $sql->free_result();
+
+   //check that the insert was successful
+   if($sql != TRUE || $share_id <= 0)
+   {
+      //return -130;
+	  break;
+   }
+
+   //return $share_id;
+}
  
 ?>
